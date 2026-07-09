@@ -1,0 +1,6 @@
+[build]
+builder = "nixpacks"
+providers = ["node", "playwright"]
+
+[build.nix]
+packages = []
