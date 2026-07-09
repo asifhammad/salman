@@ -154,15 +154,18 @@ async function notifyNewTrades(newItems) {
 
   for (const item of newItems) {
     const isRisk = item.eventType || item.eventName || item.marketName;
-    const isLiabilityChange = item._alertType === 'liability_change';
+    const isChange = item._alertType === 'change' || item._alertType === 'liability_change';
     
     let msg;
-    if (isLiabilityChange) {
-      const delta = formatNumber(item._liabilityDelta);
+    if (isChange) {
+      const parts = [];
+      if (item._betDelta > 0) parts.push('+' + item._betDelta + ' bets');
+      if (item._clientDelta > 0) parts.push('+' + item._clientDelta + ' clients');
+      if (Math.abs(item._liabilityDelta) >= 1000) parts.push(formatNumber(item._liabilityDelta) + ' liab');
+      const delta = parts.join(', ') || '🔄 activity';
       msg = formatRiskAlert(item);
-      // Prefix with delta info
-      msg.tg = msg.tg.replace('⚠️ <b>Risk Alert', '📈 <b>Liability +' + delta);
-      msg.wa = msg.wa.replace('⚠️ *Risk Alert', '📈 *Liability +' + delta);
+      msg.tg = msg.tg.replace('⚠️ <b>Risk Alert', '📈 <b>' + delta);
+      msg.wa = msg.wa.replace('⚠️ *Risk Alert', '📈 *' + delta);
     } else {
       msg = isRisk ? formatRiskAlert(item) : { tg: '📢 New item: ' + (item._id || item.id), wa: '📢 New item: ' + (item._id || item.id) };
     }

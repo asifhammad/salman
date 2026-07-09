@@ -166,46 +166,46 @@ async function executePollCycle() {
     }
   }
 
-  // ── Detect liability changes on existing markets ──────
-  const liabilityAlerts = [];
+  // ── Detect changes on existing markets ──────────────────
+  const changeAlerts = [];
   if (POLL_ENDPOINT === 'MSACurrentWorkingMarketList') {
     for (const item of items) {
       const mktId = item.marketID;
       const currentLiab = Math.abs(Number(item.liability || 0));
-      const prevLiab = previousLiabilityMap.get(mktId) || 0;
+      const currentBets = Number(item.totalBets || 0);
+      const currentClients = Number(item.totalClients || 0);
+      const prev = previousLiabilityMap.get(mktId) || { liab: 0, bets: 0, clients: 0 };
 
-      if (prevLiab > 0 && currentLiab > prevLiab + LIABILITY_CHANGE_THRESHOLD) {
-        const delta = currentLiab - prevLiab;
-        liabilityAlerts.push({
+      const liabDelta = currentLiab - prev.liab;
+      const betDelta = currentBets - prev.bets;
+      const clientDelta = currentClients - prev.clients;
+
+      // Alert if anything changed
+      if (prev.liab > 0 && (liabDelta > LIABILITY_CHANGE_THRESHOLD || betDelta > 0 || clientDelta > 0)) {
+        changeAlerts.push({
           ...item,
-          _alertType: 'liability_change',
-          _prevLiability: prevLiab,
-          _liabilityDelta: delta,
+          _alertType: 'change',
+          _prevLiability: prev.liab,
+          _liabilityDelta: liabDelta,
+          _betDelta: betDelta,
+          _clientDelta: clientDelta,
         });
       }
-      previousLiabilityMap.set(mktId, currentLiab);
+      previousLiabilityMap.set(mktId, { liab: currentLiab, bets: currentBets, clients: currentClients });
     }
   }
 
-  if (items.length === 0 && liabilityAlerts.length === 0) {
+  if (items.length === 0 && changeAlerts.length === 0) {
     return { success: true, newItemsFound: 0 };
   }
 
-  // ── Determine the ID field ───────────────────────────
-  const idKey = detectIdKey(items[0] || liabilityAlerts[0]);
-
-  // ── Diff new markets against database ────────────────
+  const idKey = detectIdKey(items[0] || changeAlerts[0]);
   const newMarkets = items.length > 0 ? diffNewTrades(items, idKey) : [];
 
-  // ── Combine: new markets + liability changes ──────────
   const allAlerts = [...newMarkets];
-  // Add liability changes for markets we already know about
-  for (const alert of liabilityAlerts) {
-    // Only if not already in newMarkets (avoid duplicate)
+  for (const alert of changeAlerts) {
     const alreadyNew = newMarkets.some(m => m.marketID === alert.marketID);
-    if (!alreadyNew) {
-      allAlerts.push(alert);
-    }
+    if (!alreadyNew) allAlerts.push(alert);
   }
 
   if (allAlerts.length > 0) {
