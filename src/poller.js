@@ -28,6 +28,12 @@ const REQUEST_TIMEOUT_MS = 15_000;
 const MIN_LIABILITY_THRESHOLD = Number(process.env.MIN_LIABILITY_THRESHOLD) || 0;
 const LIABILITY_CHANGE_THRESHOLD = Number(process.env.LIABILITY_CHANGE_THRESHOLD) || 50000; // alert if liability changes by 50K+
 
+// Bet-level polling (individual bets within each market)
+const BET_POLL_ENABLED = process.env.BET_POLL_ENABLED !== 'false'; // default: on
+const BET_POLL_ENDPOINT = 'MSACurrentMarketBets';
+const BET_POLL_MAX_COUNT = Number(process.env.BET_POLL_MAX_COUNT) || 100000;
+const BET_POLL_MAX_MARKETS = Number(process.env.BET_POLL_MAX_MARKETS) || 20; // max markets to deep-poll per cycle
+
 // ── State ──────────────────────────────────────────────
 let authState = null;
 let pollCount = 0;
@@ -212,6 +218,15 @@ async function executePollCycle() {
     await notifyNewTrades(allAlerts);
   }
 
+  // ── Bet-level polling: fetch individual bets for each market ──
+  if (BET_POLL_ENABLED) {
+    const newBets = await pollIndividualBets(items);
+    if (newBets.length > 0) {
+      console.log('[poller] 🎯 Total new individual bets this cycle: ' + newBets.length);
+      await notifyNewTrades(newBets);
+    }
+  }
+
   // ── Periodic housekeeping ────────────────────────────
   pruneCounter++;
   if (pruneCounter % 100 === 0) {
@@ -260,6 +275,66 @@ async function bootstrapAuth() {
     console.error('[poller] ❌ Failed to bootstrap auth:', err.message);
     return false;
   }
+}
+
+/**
+ * Fetch individual bets for a specific market from MSACurrentMarketBets.
+ * Returns the raw bet array from the API response.
+ */
+async function fetchMarketBets(marketID) {
+  const url = API_BASE.replace(/\/+$/, '') + '/' + BET_POLL_ENDPOINT;
+  try {
+    const resp = await axios.post(url, {
+      status: 'M',          // 'M' = Matched bets
+      marketID: String(marketID),
+      count: BET_POLL_MAX_COUNT,
+    }, buildRequestConfig());
+    const data = resp.data;
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.data)) return data.data;
+    if (data && Array.isArray(data.result)) return data.result;
+    return [];
+  } catch (err) {
+    // 401/403 → session expired, let main poll handle re-auth
+    const status = err.response?.status;
+    if (status === 401 || status === 403) {
+      console.warn('[poller] ⚠️  Bet poll 401/403 for market ' + marketID + ' — skipping.');
+    } else {
+      console.warn('[poller] ⚠️  Bet poll failed for market ' + marketID + ': ' + err.message);
+    }
+    return [];
+  }
+}
+
+/**
+ * Poll individual bets for all active markets and detect new bets.
+ * Uses betID as the unique key for deduplication.
+ */
+async function pollIndividualBets(markets) {
+  if (!BET_POLL_ENABLED || markets.length === 0) return [];
+
+  // Limit how many markets we deep-poll per cycle
+  const marketsToPoll = markets.slice(0, BET_POLL_MAX_MARKETS);
+  const allNewBets = [];
+
+  for (const market of marketsToPoll) {
+    const mktId = market.marketID;
+    if (!mktId) continue;
+
+    const bets = await fetchMarketBets(mktId);
+    if (bets.length === 0) continue;
+
+    console.log('[poller] 🎲 Market ' + mktId + ' (' + (market.marketName || '?') + '): ' + bets.length + ' individual bets');
+
+    // Diff using betID as the unique key
+    const newBets = diffNewTrades(bets, 'betID');
+    if (newBets.length > 0) {
+      console.log('[poller] 🆕 ' + newBets.length + ' NEW individual bet(s) in ' + (market.eventName || mktId));
+      allNewBets.push(...newBets);
+    }
+  }
+
+  return allNewBets;
 }
 
 module.exports = { executePollCycle, bootstrapAuth, POLL_INTERVAL_SECONDS };

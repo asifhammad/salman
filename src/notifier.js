@@ -65,6 +65,46 @@ function formatRiskAlert(item) {
   };
 }
 
+/**
+ * Format an individual bet alert (from MSACurrentMarketBets).
+ * Shows: Client, Runner, Side, Stake, Price, Bet ID, Event, Market, Time
+ */
+function formatBetAlert(item) {
+  const TZ = process.env.TZ || 'Asia/Karachi';
+  const userName = item.userName || 'Unknown';
+  const runner = item.runnerName || 'Unknown';
+  const side = (item.side || '').toUpperCase() === 'LAY' ? '📉 LAY' : '📈 BACK';
+  const price = item.orderPrice ? Number(item.orderPrice).toFixed(2) : '?';
+  const stake = formatNumber(item.orderSize);
+  const betID = item.betID || '?';
+  const event = item.eventName || 'Unknown Event';
+  const market = item.marketName || 'Unknown Market';
+  const placedTime = item.placedDate
+    ? new Date(item.placedDate).toLocaleString('en-PK', { timeZone: TZ, hour12: true, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : 'N/A';
+
+  return {
+    tg: [
+      '🎯 <b>New Bet — ' + event + '</b>',
+      '',
+      '👤 <b>' + userName + '</b>  |  ' + side,
+      '🏃 Runner: <b>' + runner + '</b>',
+      '💰 Stake: <b>' + stake + '</b> @ ' + price,
+      '🆔 Bet ID: <code>' + betID + '</code>',
+      '📊 ' + market + '  |  🕐 ' + placedTime,
+    ].join('\n'),
+    wa: [
+      '🎯 *New Bet — ' + event + '*',
+      '',
+      '👤 *' + userName + '*  |  ' + side,
+      '🏃 Runner: *' + runner + '*',
+      '💰 Stake: *' + stake + '* @ ' + price,
+      '🆔 Bet ID: ' + betID,
+      '📊 ' + market + '  |  🕐 ' + placedTime,
+    ].join('\n'),
+  };
+}
+
 function formatNumber(val) {
   if (val === null || val === undefined) return 'N/A';
   const num = Number(val);
@@ -155,9 +195,12 @@ async function notifyNewTrades(newItems) {
   for (const item of newItems) {
     const isRisk = item.eventType || item.eventName || item.marketName;
     const isChange = item._alertType === 'change' || item._alertType === 'liability_change';
+    const isBet = !!(item.betID && item.runnerName);  // individual bet from MSACurrentMarketBets
     
     let msg;
-    if (isChange) {
+    if (isBet) {
+      msg = formatBetAlert(item);
+    } else if (isChange) {
       const parts = [];
       if (item._betDelta > 0) parts.push('+' + item._betDelta + ' bets');
       if (item._clientDelta > 0) parts.push('+' + item._clientDelta + ' clients');
@@ -199,4 +242,4 @@ async function notifyNewTrades(newItems) {
   return { tg: tgSent, wa: waSent };
 }
 
-module.exports = { notifyNewTrades, formatRiskAlert };
+module.exports = { notifyNewTrades, formatRiskAlert, formatBetAlert };
