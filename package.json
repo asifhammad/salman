@@ -9,15 +9,11 @@
     "postinstall": "npx playwright install chromium --with-deps 2>/dev/null || npx playwright install chromium"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^7.0.0-rc13",
     "axios": "^1.7.2",
     "better-sqlite3": "^11.1.2",
     "dotenv": "^16.4.5",
     "node-cron": "^3.0.3",
-    "pino": "^10.3.1",
-    "playwright": "^1.45.0",
-    "qrcode": "^1.5.4",
-    "qrcode-terminal": "^0.12.0"
+    "playwright": "^1.45.0"
   },
   "engines": {
     "node": ">=20.0.0"
