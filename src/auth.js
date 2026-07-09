@@ -278,10 +278,18 @@ async function authenticate() {
   return authPayload;
 }
 
+const AUTH_TTL_HOURS = Number(process.env.AUTH_TTL_HOURS) || 4;
+
 async function getAuthHeaders(forceRefresh = false) {
   if (!forceRefresh) {
     const cached = loadAuthState();
-    if (cached) return cached;
+    if (cached) {
+      const ageMinutes = (Date.now() - (cached.timestamp || 0)) / 60_000;
+      if (ageMinutes < AUTH_TTL_HOURS * 60) {
+        return cached;
+      }
+      console.log('[auth] ⏰ Cached auth expired (' + Math.round(ageMinutes) + 'm > ' + AUTH_TTL_HOURS + 'h TTL), refreshing…');
+    }
   }
   console.log('[auth] 🔄 Performing fresh login…');
   return authenticate();
