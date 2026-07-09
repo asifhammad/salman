@@ -1,6 +1,5 @@
 [build]
 builder = "nixpacks"
-providers = ["node", "playwright"]
 
 [build.nix]
-packages = []
+packages = ["libglib", "nss", "nspr", "atk", "at-spi2-atk", "cups", "libdrm", "dbus", "libxkbcommon", "xorg.libxcomposite", "xorg.libxdamage", "xorg.libxfixes", "xorg.libxrandr", "mesa", "pango", "cairo", "alsa-lib"]
