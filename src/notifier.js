@@ -154,7 +154,18 @@ async function notifyNewTrades(newItems) {
 
   for (const item of newItems) {
     const isRisk = item.eventType || item.eventName || item.marketName;
-    const msg = isRisk ? formatRiskAlert(item) : { tg: '📢 New item: ' + (item._id || item.id), wa: '📢 New item: ' + (item._id || item.id) };
+    const isLiabilityChange = item._alertType === 'liability_change';
+    
+    let msg;
+    if (isLiabilityChange) {
+      const delta = formatNumber(item._liabilityDelta);
+      msg = formatRiskAlert(item);
+      // Prefix with delta info
+      msg.tg = msg.tg.replace('⚠️ <b>Risk Alert', '📈 <b>Liability +' + delta);
+      msg.wa = msg.wa.replace('⚠️ *Risk Alert', '📈 *Liability +' + delta);
+    } else {
+      msg = isRisk ? formatRiskAlert(item) : { tg: '📢 New item: ' + (item._id || item.id), wa: '📢 New item: ' + (item._id || item.id) };
+    }
     const label = item.eventName || item.marketName || item._id || item.id || '?';
 
     // Telegram

@@ -24,13 +24,15 @@ const POLL_ENDPOINT = process.env.POLL_ENDPOINT || 'MSACurrentWorkingMarketList'
 const POLL_INTERVAL_SECONDS = Number(process.env.POLL_INTERVAL_SECONDS) || 30;
 const REQUEST_TIMEOUT_MS = 15_000;
 
-// Risk Analysis thresholds — only alert if liability exceeds this (absolute value)
+// Risk Analysis thresholds
 const MIN_LIABILITY_THRESHOLD = Number(process.env.MIN_LIABILITY_THRESHOLD) || 0;
+const LIABILITY_CHANGE_THRESHOLD = Number(process.env.LIABILITY_CHANGE_THRESHOLD) || 50000; // alert if liability changes by 50K+
 
 // ── State ──────────────────────────────────────────────
 let authState = null;
 let pollCount = 0;
 let pruneCounter = 0;
+let previousLiabilityMap = new Map(); // marketID → last known liability
 
 // ── Helpers ────────────────────────────────────────────
 
@@ -164,20 +166,50 @@ async function executePollCycle() {
     }
   }
 
-  if (items.length === 0) {
+  // ── Detect liability changes on existing markets ──────
+  const liabilityAlerts = [];
+  if (POLL_ENDPOINT === 'MSACurrentWorkingMarketList') {
+    for (const item of items) {
+      const mktId = item.marketID;
+      const currentLiab = Math.abs(Number(item.liability || 0));
+      const prevLiab = previousLiabilityMap.get(mktId) || 0;
+
+      if (prevLiab > 0 && currentLiab > prevLiab + LIABILITY_CHANGE_THRESHOLD) {
+        const delta = currentLiab - prevLiab;
+        liabilityAlerts.push({
+          ...item,
+          _alertType: 'liability_change',
+          _prevLiability: prevLiab,
+          _liabilityDelta: delta,
+        });
+      }
+      previousLiabilityMap.set(mktId, currentLiab);
+    }
+  }
+
+  if (items.length === 0 && liabilityAlerts.length === 0) {
     return { success: true, newItemsFound: 0 };
   }
 
   // ── Determine the ID field ───────────────────────────
-  // SSEXCH247 uses different ID field names depending on the endpoint
-  const idKey = detectIdKey(items[0]);
+  const idKey = detectIdKey(items[0] || liabilityAlerts[0]);
 
-  // ── Diff against database ────────────────────────────
-  const newItems = diffNewTrades(items, idKey);
+  // ── Diff new markets against database ────────────────
+  const newMarkets = items.length > 0 ? diffNewTrades(items, idKey) : [];
 
-  // ── Notify ───────────────────────────────────────────
-  if (newItems.length > 0) {
-    await notifyNewTrades(newItems);
+  // ── Combine: new markets + liability changes ──────────
+  const allAlerts = [...newMarkets];
+  // Add liability changes for markets we already know about
+  for (const alert of liabilityAlerts) {
+    // Only if not already in newMarkets (avoid duplicate)
+    const alreadyNew = newMarkets.some(m => m.marketID === alert.marketID);
+    if (!alreadyNew) {
+      allAlerts.push(alert);
+    }
+  }
+
+  if (allAlerts.length > 0) {
+    await notifyNewTrades(allAlerts);
   }
 
   // ── Periodic housekeeping ────────────────────────────
@@ -186,7 +218,7 @@ async function executePollCycle() {
     pruneOldRecords(30);
   }
 
-  return { success: true, newItemsFound: newItems.length };
+  return { success: true, newItemsFound: allAlerts.length };
 }
 
 /**
