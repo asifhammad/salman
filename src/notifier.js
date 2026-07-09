@@ -112,11 +112,11 @@ async function sendTelegram(chatId, html) {
 
 // ── WhatsApp Sender (Whapi.cloud) ──────────────────────
 
-async function sendWhatsApp(phone, text) {
+async function sendWhatsApp(to, text) {
   if (!WA_URL || !WA_TOKEN) return false;
   try {
     const resp = await axios.post(WA_URL, {
-      to: phone.replace(/[^0-9]/g, ''),
+      to: to, // keep @g.us for groups, digits for numbers
       body: text,
     }, {
       timeout: 10_000,
@@ -130,7 +130,7 @@ async function sendWhatsApp(phone, text) {
     console.warn('[wa] ⚠️  +' + phone + ': ' + JSON.stringify(resp.data).substring(0, 200));
     return false;
   } catch (e) {
-    console.warn('[wa] ⚠️  +' + phone + ': ' + (e.response?.data?.error || e.message));
+    console.warn('[wa] ⚠️  ' + to + ': ' + (e.response?.data?.error || e.message));
     return false;
   }
 }
