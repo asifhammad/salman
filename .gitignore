@@ -1,0 +1,15 @@
+# Environment variables (contains secrets)
+.env
+
+# SQLite database
+data/
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
