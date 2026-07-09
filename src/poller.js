@@ -208,14 +208,29 @@ async function executePollCycle() {
   const idKey = detectIdKey(items[0] || changeAlerts[0]);
   const newMarkets = items.length > 0 ? diffNewTrades(items, idKey) : [];
 
-  const allAlerts = [...newMarkets];
-  for (const alert of changeAlerts) {
-    const alreadyNew = newMarkets.some(m => m.marketID === alert.marketID);
-    if (!alreadyNew) allAlerts.push(alert);
+  // ── When bet-level polling is enabled, skip market-level alerts ──
+  // for NEW markets — individual bet messages cover the same info.
+  // Still send CHANGE alerts (liability/bet count shifts on existing markets).
+  let marketAlerts = [];
+  if (BET_POLL_ENABLED) {
+    // Only keep change alerts, skip new market alerts
+    marketAlerts = changeAlerts.filter(alert => {
+      const alreadyNew = newMarkets.some(m => m.marketID === alert.marketID);
+      return !alreadyNew;
+    });
+    if (newMarkets.length > 0) {
+      console.log('[poller] 🔇 Suppressed ' + newMarkets.length + ' new market alert(s) — bet-level details will cover them.');
+    }
+  } else {
+    marketAlerts = [...newMarkets];
+    for (const alert of changeAlerts) {
+      const alreadyNew = newMarkets.some(m => m.marketID === alert.marketID);
+      if (!alreadyNew) marketAlerts.push(alert);
+    }
   }
 
-  if (allAlerts.length > 0) {
-    await notifyNewTrades(allAlerts);
+  if (marketAlerts.length > 0) {
+    await notifyNewTrades(marketAlerts);
   }
 
   // ── Bet-level polling: fetch individual bets for each market ──
