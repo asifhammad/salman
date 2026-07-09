@@ -1,5 +1,0 @@
-[build]
-builder = "nixpacks"
-
-[build.nix]
-packages = ["libglib", "nss", "nspr", "atk", "at-spi2-atk", "cups", "libdrm", "dbus", "libxkbcommon", "xorg.libxcomposite", "xorg.libxdamage", "xorg.libxfixes", "xorg.libxrandr", "mesa", "pango", "cairo", "alsa-lib"]
