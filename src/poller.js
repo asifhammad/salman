@@ -234,8 +234,10 @@ async function executePollCycle() {
   }
 
   // ── Bet-level polling: fetch individual bets for each market ──
+  let totalBetAlerts = 0;
   if (BET_POLL_ENABLED) {
     const newBets = await pollIndividualBets(items);
+    totalBetAlerts = newBets.length;
     if (newBets.length > 0) {
       console.log('[poller] 🎯 Total new individual bets this cycle: ' + newBets.length);
       await notifyNewTrades(newBets);
@@ -248,7 +250,7 @@ async function executePollCycle() {
     pruneOldRecords(30);
   }
 
-  return { success: true, newItemsFound: allAlerts.length };
+  return { success: true, newItemsFound: marketAlerts.length + totalBetAlerts };
 }
 
 /**
