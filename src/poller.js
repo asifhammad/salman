@@ -186,8 +186,14 @@ async function executePollCycle() {
       const betDelta = currentBets - prev.bets;
       const clientDelta = currentClients - prev.clients;
 
-      // Alert if anything changed
-      if (prev.liab > 0 && (liabDelta > LIABILITY_CHANGE_THRESHOLD || betDelta > 0 || clientDelta > 0)) {
+      // Only alert on meaningful negative changes:
+      //   - Liability INCREASED (liabDelta > threshold) = more risk
+      //   - New bets/clients while liability exists = activity on risky position
+      //   - Ignore liability decreases (good news) and zero-liability activity (noise)
+      const liabilityIncreased = prev.liab > 0 && liabDelta > LIABILITY_CHANGE_THRESHOLD;
+      const activityOnRiskyPosition = prev.liab > 0 && currentLiab > 0 && (betDelta > 0 || clientDelta > 0);
+
+      if (liabilityIncreased || activityOnRiskyPosition) {
         changeAlerts.push({
           ...item,
           _alertType: 'change',
@@ -208,20 +214,10 @@ async function executePollCycle() {
   const idKey = detectIdKey(items[0] || changeAlerts[0]);
   const newMarkets = items.length > 0 ? diffNewTrades(items, idKey) : [];
 
-  // ── When bet-level polling is enabled, skip market-level alerts ──
-  // for NEW markets — individual bet messages cover the same info.
-  // Still send CHANGE alerts (liability/bet count shifts on existing markets).
+  // ── When bet-level polling is enabled, skip ALL market-level alerts ──
+  // Individual bet messages cover everything — new markets and activity.
   let marketAlerts = [];
-  if (BET_POLL_ENABLED) {
-    // Only keep change alerts, skip new market alerts
-    marketAlerts = changeAlerts.filter(alert => {
-      const alreadyNew = newMarkets.some(m => m.marketID === alert.marketID);
-      return !alreadyNew;
-    });
-    if (newMarkets.length > 0) {
-      console.log('[poller] 🔇 Suppressed ' + newMarkets.length + ' new market alert(s) — bet-level details will cover them.');
-    }
-  } else {
+  if (!BET_POLL_ENABLED) {
     marketAlerts = [...newMarkets];
     for (const alert of changeAlerts) {
       const alreadyNew = newMarkets.some(m => m.marketID === alert.marketID);
