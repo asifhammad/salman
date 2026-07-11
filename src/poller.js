@@ -34,6 +34,11 @@ const BET_POLL_ENDPOINT = 'MSACurrentMarketBets';
 const BET_POLL_MAX_COUNT = Number(process.env.BET_POLL_MAX_COUNT) || 100000;
 const BET_POLL_MAX_MARKETS = Number(process.env.BET_POLL_MAX_MARKETS) || 20; // max markets to deep-poll per cycle
 
+// Muted clients — skip alerts for these usernames (comma-separated)
+const MUTED_CLIENTS = new Set(
+  (process.env.MUTED_CLIENTS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+);
+
 // ── State ──────────────────────────────────────────────
 let authState = null;
 let pollCount = 0;
@@ -233,10 +238,16 @@ async function executePollCycle() {
   let totalBetAlerts = 0;
   if (BET_POLL_ENABLED) {
     const newBets = await pollIndividualBets(items);
-    totalBetAlerts = newBets.length;
-    if (newBets.length > 0) {
-      console.log('[poller] 🎯 Total new individual bets this cycle: ' + newBets.length);
-      await notifyNewTrades(newBets);
+    // Filter out muted clients before notifying (still tracked in DB)
+    const audibleBets = MUTED_CLIENTS.size > 0
+      ? newBets.filter(b => !MUTED_CLIENTS.has((b.userName || '').toLowerCase()))
+      : newBets;
+    const mutedCount = newBets.length - audibleBets.length;
+    if (mutedCount > 0) console.log('[poller] 🔇 Muted ' + mutedCount + ' bet(s) from: ' + [...MUTED_CLIENTS].join(', '));
+    totalBetAlerts = audibleBets.length;
+    if (audibleBets.length > 0) {
+      console.log('[poller] 🎯 Total new individual bets this cycle: ' + audibleBets.length);
+      await notifyNewTrades(audibleBets);
     }
   }
 
